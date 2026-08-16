@@ -1,55 +1,72 @@
-import { DeployButton } from "@/components/deploy-button";
-import { EnvVarWarning } from "@/components/env-var-warning";
-import { AuthButton } from "@/components/auth-button";
-import { ThemeSwitcher } from "@/components/theme-switcher";
-import { hasEnvVars } from "@/lib/utils";
+import { LogoutButton } from "@/components/logout-button";
+import { Button } from "@/components/ui/button";
+import { Separator } from "@/components/ui/separator";
+import { createClient } from "@/lib/supabase/server";
+import { CircleUserRound } from "lucide-react";
 import Link from "next/link";
-import { Suspense } from "react";
+import { redirect } from "next/navigation";
 
-export default function ProtectedLayout({
+export const instant = false;
+
+export default async function ProtectedLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  return (
-    <main className="min-h-screen flex flex-col items-center">
-      <div className="flex-1 w-full flex flex-col gap-20 items-center">
-        <nav className="w-full flex justify-center border-b border-b-foreground/10 h-16">
-          <div className="w-full max-w-5xl flex justify-between items-center p-3 px-5 text-sm">
-            <div className="flex gap-5 items-center font-semibold">
-              <Link href={"/"}>Next.js Supabase Starter</Link>
-              <div className="flex items-center gap-2">
-                <DeployButton />
-              </div>
-            </div>
-            {!hasEnvVars ? (
-              <EnvVarWarning />
-            ) : (
-              <Suspense>
-                <AuthButton />
-              </Suspense>
-            )}
-          </div>
-        </nav>
-        <div className="flex-1 flex flex-col gap-20 max-w-5xl p-5">
-          {children}
-        </div>
+  const supabase = await createClient();
+  const { data, error } = await supabase.auth.getClaims();
 
-        <footer className="w-full flex items-center justify-center border-t mx-auto text-center text-xs gap-8 py-16">
-          <p>
-            Powered by{" "}
-            <a
-              href="https://supabase.com/?utm_source=create-next-app&utm_medium=template&utm_term=nextjs"
-              target="_blank"
-              className="font-bold hover:underline"
-              rel="noreferrer"
-            >
-              Supabase
-            </a>
-          </p>
-          <ThemeSwitcher />
-        </footer>
+  if (error || !data?.claims) {
+    redirect("/auth/login");
+  }
+
+  const { error: initializationError } = await supabase.rpc(
+    "initialize_personal_universe",
+  );
+
+  if (initializationError) {
+    throw new Error("No se pudo inicializar el universo personal.");
+  }
+
+  const email =
+    typeof data.claims.email === "string" ? data.claims.email : "Usuario";
+
+  return (
+    <div className="min-h-svh bg-background">
+      <div className="grid min-h-svh md:grid-cols-[16rem_1fr]">
+        <aside className="hidden border-r md:flex md:flex-col">
+          <div className="flex flex-1 flex-col gap-6 p-4">
+            <div className="flex flex-col gap-2">
+              <p className="px-2 text-xs font-medium text-muted-foreground">
+                Universos
+              </p>
+              <Button asChild className="justify-start" variant="secondary">
+                <Link aria-current="page" href="/protected">
+                  <CircleUserRound data-icon="inline-start" />
+                  Personal
+                </Link>
+              </Button>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-3 p-4">
+            <Separator />
+            <p className="truncate px-2 text-sm text-muted-foreground" title={email}>
+              {email}
+            </p>
+            <LogoutButton className="w-full justify-start" variant="ghost" />
+          </div>
+        </aside>
+
+        <main className="min-w-0">
+          <div className="mx-auto flex min-h-svh w-full max-w-6xl flex-col px-6 py-8 md:px-10">
+            <header>
+              <h1 className="text-2xl font-semibold tracking-tight">Personal</h1>
+            </header>
+            <div className="flex-1">{children}</div>
+          </div>
+        </main>
       </div>
-    </main>
+    </div>
   );
 }
