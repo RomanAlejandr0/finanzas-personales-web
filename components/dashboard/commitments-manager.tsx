@@ -65,7 +65,6 @@ import {
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Spinner } from "@/components/ui/spinner";
-import { getBusinessDate } from "@/lib/business-date";
 import { createClient } from "@/lib/supabase/client";
 
 type CommitmentKind =
@@ -113,6 +112,12 @@ function formatDate(date: string) {
   }).format(new Date(`${date}T12:00:00`));
 }
 
+function getTodayInputValue() {
+  const today = new Date();
+
+  return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+}
+
 function getStatusLabel(status: CommitmentStatus) {
   switch (status) {
     case "active":
@@ -153,7 +158,7 @@ function getRecurrenceLabel(recurrence: CommitmentRecurrence) {
 }
 
 function getOccurrenceLabel(date: string) {
-  const today = getBusinessDate();
+  const today = getTodayInputValue();
 
   if (date < today) {
     return `Venció el ${formatDate(date)}`;
@@ -186,7 +191,7 @@ export function CommitmentsManager({
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [name, setName] = useState("");
   const [amount, setAmount] = useState("");
-  const [anchorDate, setAnchorDate] = useState(getBusinessDate);
+  const [anchorDate, setAnchorDate] = useState(getTodayInputValue());
   const [kind, setKind] = useState<CommitmentKind>("subscription");
   const [recurrence, setRecurrence] =
     useState<CommitmentRecurrence>("monthly");
@@ -245,7 +250,7 @@ export function CommitmentsManager({
 
       setName("");
       setAmount("");
-      setAnchorDate(getBusinessDate());
+      setAnchorDate(getTodayInputValue());
       setKind("subscription");
       setRecurrence("monthly");
       setIsCreateOpen(false);
@@ -301,7 +306,7 @@ export function CommitmentsManager({
   const hasDueOccurrence = (commitment: ManagedCommitment) =>
     commitment.status === "active" &&
     commitment.nextOccurrence !== null &&
-    commitment.nextOccurrence.scheduledFor <= getBusinessDate();
+    commitment.nextOccurrence.scheduledFor <= getTodayInputValue();
 
   return (
     <>

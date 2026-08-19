@@ -43,7 +43,6 @@ import {
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Spinner } from "@/components/ui/spinner";
-import { getBusinessDate } from "@/lib/business-date";
 import { createClient } from "@/lib/supabase/client";
 
 export type UpcomingCommitment = {
@@ -82,6 +81,12 @@ function formatDate(date: string) {
   }).format(new Date(`${date}T12:00:00`));
 }
 
+function getTodayInputValue() {
+  const today = new Date();
+
+  return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+}
+
 export function UpcomingCommitmentsCard({
   accountId,
   commitments,
@@ -91,7 +96,7 @@ export function UpcomingCommitmentsCard({
   const [isOpen, setIsOpen] = useState(false);
   const [name, setName] = useState("");
   const [amount, setAmount] = useState("");
-  const [anchorDate, setAnchorDate] = useState(getBusinessDate);
+  const [anchorDate, setAnchorDate] = useState(getTodayInputValue());
   const [kind, setKind] = useState<CommitmentKind>("subscription");
   const [recurrence, setRecurrence] =
     useState<CommitmentRecurrence>("monthly");
@@ -162,7 +167,7 @@ export function UpcomingCommitmentsCard({
 
       setName("");
       setAmount("");
-      setAnchorDate(getBusinessDate());
+      setAnchorDate(getTodayInputValue());
       setKind("subscription");
       setRecurrence("monthly");
       setIsOpen(false);
@@ -214,7 +219,7 @@ export function UpcomingCommitmentsCard({
                       {formatCurrency(commitment.amount, currencyCode)}
                     </p>
                   </div>
-                  {commitment.scheduledFor === getBusinessDate() && (
+                  {commitment.scheduledFor === getTodayInputValue() && (
                     <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-muted/50 p-3">
                       <p className="text-sm text-muted-foreground">Vence hoy.</p>
                       <Button

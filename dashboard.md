@@ -21,4 +21,4 @@
 
 - Lee `universes`, `accounts`, `commitments` y `commitment_occurrences` bajo RLS.
 - Usa las RPC `initialize_personal_universe`, `create_asset_account`, `update_asset_account`, `record_balance_snapshot`, `create_commitment`, `pause_commitment`, `cancel_commitment`, `fulfill_commitment_occurrence` y `get_projected_balance_series`.
-- El detalle y los cambios del modelo viven en [`../supabase/objetos-base-de-datos.md`](../supabase/objetos-base-de-datos.md).
+- El resumen del modelo vive en [`../supabase/resumen-modelo-base-de-datos.md`](../supabase/resumen-modelo-base-de-datos.md) y el detalle técnico en [`../supabase/catalogo-esquema-base-de-datos.md`](../supabase/catalogo-esquema-base-de-datos.md).

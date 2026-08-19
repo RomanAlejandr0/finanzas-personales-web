@@ -1,4 +1,4 @@
-import { LogoutButton } from "@/components/logout-button";
+import { LogoutButton } from "@/components/dashboard/logout-button";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { createClient } from "@/lib/supabase/server";

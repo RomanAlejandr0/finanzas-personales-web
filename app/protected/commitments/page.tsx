@@ -1,8 +1,8 @@
-import { AccountContextSelector, type AssetAccount } from "@/components/account-context-selector";
+import { AccountContextSelector, type AssetAccount } from "@/components/dashboard/account-context-selector";
 import {
   CommitmentsManager,
   type ManagedCommitment,
-} from "@/components/commitments-manager";
+} from "@/components/dashboard/commitments-manager";
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/server";
 import { ArrowLeft } from "lucide-react";

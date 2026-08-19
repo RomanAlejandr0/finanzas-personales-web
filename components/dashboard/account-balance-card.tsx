@@ -35,7 +35,7 @@ import { Spinner } from "@/components/ui/spinner";
 import {
   BalanceProjectionChart,
   type BalanceProjectionPoint,
-} from "@/components/balance-projection-chart";
+} from "@/components/dashboard/balance-projection-chart";
 import { createClient } from "@/lib/supabase/client";
 
 type AccountBalanceCardProps = {

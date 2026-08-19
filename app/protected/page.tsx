@@ -1,14 +1,13 @@
-import { AccountBalanceCard } from "@/components/account-balance-card";
+import { AccountBalanceCard } from "@/components/dashboard/account-balance-card";
 import {
   AccountContextSelector,
   type AssetAccount,
-} from "@/components/account-context-selector";
-import type { BalanceProjectionPoint } from "@/components/balance-projection-chart";
+} from "@/components/dashboard/account-context-selector";
+import type { BalanceProjectionPoint } from "@/components/dashboard/balance-projection-chart";
 import {
   type UpcomingCommitment,
   UpcomingCommitmentsCard,
-} from "@/components/upcoming-commitments-card";
-import { getBusinessDate, getBusinessMonthEnd } from "@/lib/business-date";
+} from "@/components/dashboard/upcoming-commitments-card";
 import { createClient } from "@/lib/supabase/server";
 
 type ProjectedBalanceSeries = {
@@ -35,10 +34,16 @@ type PageProps = {
   searchParams: Promise<{ account?: string | string[] }>;
 };
 
+function getEndOfCurrentMonth() {
+  const today = new Date();
+  const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+
+  return `${lastDay.getFullYear()}-${String(lastDay.getMonth() + 1).padStart(2, "0")}-${String(lastDay.getDate()).padStart(2, "0")}`;
+}
+
 export default async function ProtectedPage({ searchParams }: PageProps) {
   const supabase = await createClient();
-  const businessDate = getBusinessDate();
-  const projectionThroughDate = getBusinessMonthEnd();
+  const projectionThroughDate = getEndOfCurrentMonth();
   const { account: requestedAccount } = await searchParams;
   const requestedAccountId =
     typeof requestedAccount === "string" ? requestedAccount : undefined;
@@ -118,7 +123,6 @@ export default async function ProtectedPage({ searchParams }: PageProps) {
           universe.id,
           commitmentIds,
           commitmentById,
-          businessDate,
           projectionThroughDate,
         );
 
@@ -151,7 +155,6 @@ async function getUpcomingCommitments(
   universeId: string,
   commitmentIds: string[],
   commitmentById: Map<string, Commitment>,
-  startDate: string,
   throughDate: string,
 ) {
   const { data: occurrences, error } = await supabase
@@ -159,7 +162,7 @@ async function getUpcomingCommitments(
     .select("id, commitment_id, scheduled_for, amount")
     .eq("universe_id", universeId)
     .eq("status", "planned")
-    .gte("scheduled_for", startDate)
+    .gte("scheduled_for", new Date().toISOString().slice(0, 10))
     .lte("scheduled_for", throughDate)
     .in("commitment_id", commitmentIds)
     .order("scheduled_for", { ascending: true })
