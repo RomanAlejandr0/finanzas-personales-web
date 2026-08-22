@@ -6,8 +6,6 @@ import { CircleUserRound } from "lucide-react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
-export const instant = false;
-
 export default async function ProtectedLayout({
   children,
 }: {

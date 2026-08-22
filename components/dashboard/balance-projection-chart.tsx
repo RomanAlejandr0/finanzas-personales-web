@@ -1,6 +1,6 @@
 "use client";
 
-import { Area, AreaChart, CartesianGrid, XAxis } from "recharts";
+import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts";
 
 import {
   ChartContainer,
@@ -31,6 +31,11 @@ type ChartPoint = BalanceProjectionPoint & {
   label: string;
 };
 
+type BalanceAxis = {
+  domain: [number, number];
+  ticks: number[];
+};
+
 function toLocalDate(date: string) {
   return new Date(`${date}T12:00:00`);
 }
@@ -49,6 +54,54 @@ function formatCurrency(amount: number, currencyCode: string) {
   }).format(amount);
 }
 
+function formatCompactCurrency(amount: number, currencyCode: string) {
+  return new Intl.NumberFormat("es-MX", {
+    style: "currency",
+    currency: currencyCode,
+    currencyDisplay: "narrowSymbol",
+    maximumFractionDigits: 1,
+    notation: "compact",
+  }).format(amount);
+}
+
+function getNiceStep(value: number) {
+  const magnitude = 10 ** Math.floor(Math.log10(value));
+  const normalized = value / magnitude;
+
+  if (normalized <= 1) return magnitude;
+  if (normalized <= 2) return 2 * magnitude;
+  if (normalized <= 2.5) return 2.5 * magnitude;
+  if (normalized <= 5) return 5 * magnitude;
+
+  return 10 * magnitude;
+}
+
+function getBalanceAxis(values: number[]): BalanceAxis {
+  const balances = values.filter(Number.isFinite);
+
+  if (balances.length === 0) {
+    return { domain: [0, 1], ticks: [0, 0.5, 1] };
+  }
+
+  const minimum = Math.min(...balances);
+  const maximum = Math.max(...balances);
+  const spread = Math.max(
+    maximum - minimum,
+    Math.max(Math.abs(minimum), Math.abs(maximum), 1) * 0.06,
+  );
+  const padding = spread * 0.12;
+  const step = getNiceStep((spread + padding * 2) / 3);
+  const domainMin = Math.floor((minimum - padding) / step) * step;
+  const domainMax = Math.ceil((maximum + padding) / step) * step;
+  const ticks: number[] = [];
+
+  for (let value = domainMin; value <= domainMax; value += step) {
+    ticks.push(Number(value.toPrecision(12)));
+  }
+
+  return { domain: [domainMin, domainMax], ticks };
+}
+
 export function BalanceProjectionChart({
   currencyCode,
   data,
@@ -63,12 +116,13 @@ export function BalanceProjectionChart({
           label: "Ahora",
           plannedChange: 0,
         },
-        ...data.map((point, index) => ({
+        ...data.map((point) => ({
           ...point,
-          label: index === 0 ? "Hoy" : formatDate(point.date),
+          label: formatDate(point.date),
         })),
       ]
     : [];
+  const balanceAxis = getBalanceAxis(chartData.map((point) => point.balance));
 
   return (
     <section aria-label="Proyección de saldo" className="flex flex-col gap-4">
@@ -90,7 +144,7 @@ export function BalanceProjectionChart({
         <AreaChart
           accessibilityLayer
           data={chartData}
-          margin={{ left: 4, right: 4, top: 8 }}
+          margin={{ right: 4, top: 8 }}
         >
           <defs>
             <linearGradient id="balance-projection" x1="0" x2="0" y1="0" y2="1">
@@ -103,7 +157,19 @@ export function BalanceProjectionChart({
             axisLine={false}
             dataKey="label"
             minTickGap={28}
+            tickMargin={8}
             tickLine={false}
+          />
+          <YAxis
+            axisLine={false}
+            domain={balanceAxis.domain}
+            tickFormatter={(value) =>
+              formatCompactCurrency(Number(value), currencyCode)
+            }
+            tickLine={false}
+            tickMargin={8}
+            ticks={balanceAxis.ticks}
+            width={56}
           />
           <ChartTooltip
             content={
@@ -111,7 +177,7 @@ export function BalanceProjectionChart({
                 formatter={(value) =>
                   formatCurrency(Number(value), currencyCode)
                 }
-                indicator="line"
+                indicator="dot"
                 labelFormatter={(label) => String(label)}
               />
             }
