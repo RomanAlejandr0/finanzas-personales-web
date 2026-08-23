@@ -2,6 +2,7 @@ import { AccountContextSelector, type AssetAccount } from "@/components/dashboar
 import {
   CommitmentsManager,
   type ManagedCommitment,
+  type ManagedOccurrence,
 } from "@/components/dashboard/commitments-manager";
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/server";
@@ -23,6 +24,7 @@ type OccurrenceRecord = {
   commitment_id: string;
   amount: number | string;
   scheduled_for: string;
+  status: ManagedOccurrence["status"];
 };
 
 type PageProps = {
@@ -74,35 +76,37 @@ export default async function CommitmentsPage({ searchParams }: PageProps) {
   }
 
   const commitmentRecords = (commitments as CommitmentRecord[] | null) ?? [];
-  const activeCommitmentIds = commitmentRecords
-    .filter((commitment) => commitment.status === "active")
-    .map((commitment) => commitment.id);
+  const commitmentIds = commitmentRecords.map((commitment) => commitment.id);
+  const occurrencesByCommitmentId = new Map<string, OccurrenceRecord[]>();
 
-  const occurrenceByCommitmentId = new Map<string, OccurrenceRecord>();
-
-  if (activeCommitmentIds.length > 0) {
+  if (commitmentIds.length > 0) {
     const { data: occurrences, error: occurrencesError } = await supabase
       .from("commitment_occurrences")
-      .select("id, commitment_id, amount, scheduled_for")
+      .select("id, commitment_id, amount, scheduled_for, status")
       .eq("universe_id", universe.id)
-      .eq("status", "planned")
-      .in("commitment_id", activeCommitmentIds)
+      .in("commitment_id", commitmentIds)
       .order("scheduled_for", { ascending: true });
 
     if (occurrencesError) {
-      throw new Error("No se pudieron obtener las fechas de los compromisos.");
+      throw new Error("No se pudieron obtener las ocurrencias de los compromisos.");
     }
 
     for (const occurrence of (occurrences as OccurrenceRecord[] | null) ?? []) {
-      if (!occurrenceByCommitmentId.has(occurrence.commitment_id)) {
-        occurrenceByCommitmentId.set(occurrence.commitment_id, occurrence);
-      }
+      const commitmentOccurrences =
+        occurrencesByCommitmentId.get(occurrence.commitment_id) ?? [];
+
+      commitmentOccurrences.push(occurrence);
+      occurrencesByCommitmentId.set(occurrence.commitment_id, commitmentOccurrences);
     }
   }
 
   const managedCommitments: ManagedCommitment[] = commitmentRecords.map(
     (commitment) => {
-      const occurrence = occurrenceByCommitmentId.get(commitment.id);
+      const occurrences = occurrencesByCommitmentId.get(commitment.id) ?? [];
+      const nextOccurrence =
+        commitment.status === "active"
+          ? occurrences.find((occurrence) => occurrence.status === "planned")
+          : undefined;
 
       return {
         id: commitment.id,
@@ -112,13 +116,19 @@ export default async function CommitmentsPage({ searchParams }: PageProps) {
         defaultAmount: Number(commitment.default_amount),
         recurrence: commitment.recurrence,
         status: commitment.status,
-        nextOccurrence: occurrence
+        nextOccurrence: nextOccurrence
           ? {
-              id: occurrence.id,
-              amount: Number(occurrence.amount),
-              scheduledFor: occurrence.scheduled_for,
+              id: nextOccurrence.id,
+              amount: Number(nextOccurrence.amount),
+              scheduledFor: nextOccurrence.scheduled_for,
             }
           : null,
+        occurrences: occurrences.map((occurrence) => ({
+          id: occurrence.id,
+          amount: Number(occurrence.amount),
+          scheduledFor: occurrence.scheduled_for,
+          status: occurrence.status,
+        })),
       };
     },
   );

@@ -34,11 +34,22 @@ type PageProps = {
   searchParams: Promise<{ account?: string | string[] }>;
 };
 
+function formatLocalDate(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function getStartOfCurrentMonth() {
+  const today = new Date();
+  const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
+
+  return formatLocalDate(firstDay);
+}
+
 function getEndOfCurrentMonth() {
   const today = new Date();
   const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0);
 
-  return `${lastDay.getFullYear()}-${String(lastDay.getMonth() + 1).padStart(2, "0")}-${String(lastDay.getDate()).padStart(2, "0")}`;
+  return formatLocalDate(lastDay);
 }
 
 export default async function ProtectedPage({ searchParams }: PageProps) {
@@ -162,11 +173,10 @@ async function getUpcomingCommitments(
     .select("id, commitment_id, scheduled_for, amount")
     .eq("universe_id", universeId)
     .eq("status", "planned")
-    .gte("scheduled_for", new Date().toISOString().slice(0, 10))
+    .gte("scheduled_for", getStartOfCurrentMonth())
     .lte("scheduled_for", throughDate)
     .in("commitment_id", commitmentIds)
-    .order("scheduled_for", { ascending: true })
-    .limit(5);
+    .order("scheduled_for", { ascending: true });
 
   if (error) {
     throw new Error("No se pudieron obtener los próximos compromisos.");

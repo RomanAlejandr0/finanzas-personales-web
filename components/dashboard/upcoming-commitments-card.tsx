@@ -103,6 +103,7 @@ export function UpcomingCommitmentsCard({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [actionErrorMessage, setActionErrorMessage] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  const today = getTodayInputValue();
 
   const handleOpenChange = (open: boolean) => {
     if (isPending) {
@@ -219,9 +220,13 @@ export function UpcomingCommitmentsCard({
                       {formatCurrency(commitment.amount, currencyCode)}
                     </p>
                   </div>
-                  {commitment.scheduledFor === getTodayInputValue() && (
+                  {commitment.scheduledFor <= today && (
                     <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-muted/50 p-3">
-                      <p className="text-sm text-muted-foreground">Vence hoy.</p>
+                      <p className="text-sm text-muted-foreground">
+                        {commitment.scheduledFor === today
+                          ? "Vence hoy."
+                          : "Vencido."}
+                      </p>
                       <Button
                         disabled={isPending}
                         onClick={() => fulfillOccurrence(commitment.id)}

@@ -4,15 +4,27 @@ import { useState, useTransition } from "react";
 import {
   CalendarDays,
   Check,
+  ChevronDown,
   CircleAlert,
   Ellipsis,
   Pause,
+  Play,
   Plus,
   Trash2,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -23,6 +35,11 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import {
   Dialog,
   DialogClose,
@@ -75,6 +92,14 @@ type CommitmentKind =
   | "expected_income";
 type CommitmentRecurrence = "none" | "weekly" | "monthly" | "yearly";
 type CommitmentStatus = "active" | "paused" | "cancelled";
+type OccurrenceStatus = "planned" | "fulfilled" | "skipped" | "cancelled";
+
+export type ManagedOccurrence = {
+  id: string;
+  amount: number;
+  scheduledFor: string;
+  status: OccurrenceStatus;
+};
 
 export type ManagedCommitment = {
   id: string;
@@ -89,6 +114,7 @@ export type ManagedCommitment = {
     amount: number;
     scheduledFor: string;
   } | null;
+  occurrences: ManagedOccurrence[];
 };
 
 type CommitmentsManagerProps = {
@@ -96,6 +122,8 @@ type CommitmentsManagerProps = {
   commitments: ManagedCommitment[];
   currencyCode: string;
 };
+
+type CommitmentAction = "pause" | "resume" | "cancel";
 
 function formatCurrency(amount: number, currencyCode: string) {
   return new Intl.NumberFormat("es-MX", {
@@ -182,6 +210,46 @@ function getStatusVariant(status: CommitmentStatus) {
   }
 }
 
+function getOccurrenceStatusLabel(status: OccurrenceStatus) {
+  switch (status) {
+    case "planned":
+      return "Planeada";
+    case "fulfilled":
+      return "Pagada";
+    case "skipped":
+      return "Omitida";
+    case "cancelled":
+      return "Cancelada";
+  }
+}
+
+function getOccurrenceStatusVariant(status: OccurrenceStatus) {
+  switch (status) {
+    case "planned":
+      return "secondary" as const;
+    case "fulfilled":
+      return "default" as const;
+    case "skipped":
+      return "outline" as const;
+    case "cancelled":
+      return "destructive" as const;
+  }
+}
+
+function getOccurrenceSummary(commitment: ManagedCommitment) {
+  if (commitment.nextOccurrence) {
+    return getOccurrenceLabel(commitment.nextOccurrence.scheduledFor);
+  }
+
+  const latestOccurrence = commitment.occurrences.at(-1);
+
+  if (!latestOccurrence) {
+    return "Sin ocurrencias";
+  }
+
+  return `Sin próximas · ${getOccurrenceStatusLabel(latestOccurrence.status)} el ${formatDate(latestOccurrence.scheduledFor)}`;
+}
+
 export function CommitmentsManager({
   accountId,
   commitments,
@@ -197,6 +265,10 @@ export function CommitmentsManager({
     useState<CommitmentRecurrence>("monthly");
   const [createErrorMessage, setCreateErrorMessage] = useState<string | null>(null);
   const [actionErrorMessage, setActionErrorMessage] = useState<string | null>(null);
+  const [commitmentToDelete, setCommitmentToDelete] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
   const [isPending, startTransition] = useTransition();
 
   const handleCreateOpenChange = (open: boolean) => {
@@ -281,13 +353,17 @@ export function CommitmentsManager({
 
   const updateCommitmentStatus = (
     commitmentId: string,
-    action: "pause" | "cancel",
+    action: CommitmentAction,
   ) => {
     setActionErrorMessage(null);
 
     startTransition(async () => {
       const supabase = createClient();
-      const functionName = action === "pause" ? "pause_commitment" : "cancel_commitment";
+      const functionName = {
+        pause: "pause_commitment",
+        resume: "resume_commitment",
+        cancel: "cancel_commitment",
+      }[action];
       const { error } = await supabase.rpc(functionName, {
         p_commitment_id: commitmentId,
       });
@@ -299,6 +375,33 @@ export function CommitmentsManager({
         return;
       }
 
+      router.refresh();
+    });
+  };
+
+  const deleteCancelledCommitment = () => {
+    if (!commitmentToDelete) {
+      return;
+    }
+
+    const commitmentId = commitmentToDelete.id;
+
+    setActionErrorMessage(null);
+
+    startTransition(async () => {
+      const supabase = createClient();
+      const { error } = await supabase.rpc("delete_cancelled_commitment", {
+        p_commitment_id: commitmentId,
+      });
+
+      if (error) {
+        setActionErrorMessage(
+          "No se pudo eliminar el compromiso. Los compromisos con pagos confirmados se conservan como historial.",
+        );
+        return;
+      }
+
+      setCommitmentToDelete(null);
       router.refresh();
     });
   };
@@ -351,9 +454,7 @@ export function CommitmentsManager({
                         <div className="flex flex-wrap gap-x-3 gap-y-1 text-sm text-muted-foreground">
                           <span>{getKindLabel(commitment.kind)}</span>
                           <span>{getRecurrenceLabel(commitment.recurrence)}</span>
-                          {commitment.nextOccurrence && (
-                            <span>{getOccurrenceLabel(commitment.nextOccurrence.scheduledFor)}</span>
-                          )}
+                          <span>{getOccurrenceSummary(commitment)}</span>
                         </div>
                       </div>
                       <div className="flex shrink-0 items-center gap-2">
@@ -361,47 +462,71 @@ export function CommitmentsManager({
                           {commitment.flowDirection === "outflow" ? "−" : "+"}
                           {formatCurrency(amountToDisplay, currencyCode)}
                         </p>
-                        {commitment.status !== "cancelled" && (
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button
-                                aria-label={`Acciones para ${commitment.name}`}
-                                disabled={isPending}
-                                size="icon"
-                                type="button"
-                                variant="ghost"
-                              >
-                                <Ellipsis data-icon="inline-start" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuGroup>
-                                {commitment.status === "active" && (
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              aria-label={`Acciones para ${commitment.name}`}
+                              disabled={isPending}
+                              size="icon"
+                              type="button"
+                              variant="ghost"
+                            >
+                              <Ellipsis data-icon="inline-start" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuGroup>
+                              {commitment.status === "active" && (
+                                <DropdownMenuItem
+                                  disabled={isPending}
+                                  onSelect={() =>
+                                    updateCommitmentStatus(commitment.id, "pause")
+                                  }
+                                >
+                                  <Pause />
+                                  Pausar
+                                </DropdownMenuItem>
+                              )}
+                              {commitment.status === "paused" && (
+                                <DropdownMenuItem
+                                  disabled={isPending}
+                                  onSelect={() =>
+                                    updateCommitmentStatus(commitment.id, "resume")
+                                  }
+                                >
+                                  <Play />
+                                  Reanudar
+                                </DropdownMenuItem>
+                              )}
+                              {commitment.status === "cancelled" && (
+                                <DropdownMenuItem
+                                  disabled={isPending}
+                                  onSelect={() => setCommitmentToDelete(commitment)}
+                                >
+                                  <Trash2 />
+                                  Eliminar permanentemente
+                                </DropdownMenuItem>
+                              )}
+                            </DropdownMenuGroup>
+                            {commitment.status !== "cancelled" && (
+                              <>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuGroup>
                                   <DropdownMenuItem
+                                    className="text-destructive focus:text-destructive"
                                     disabled={isPending}
                                     onSelect={() =>
-                                      updateCommitmentStatus(commitment.id, "pause")
+                                      updateCommitmentStatus(commitment.id, "cancel")
                                     }
                                   >
-                                    <Pause />
-                                    Pausar
+                                    <Trash2 />
+                                    Cancelar
                                   </DropdownMenuItem>
-                                )}
-                              </DropdownMenuGroup>
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem
-                                className="text-destructive focus:text-destructive"
-                                disabled={isPending}
-                                onSelect={() =>
-                                  updateCommitmentStatus(commitment.id, "cancel")
-                                }
-                              >
-                                <Trash2 />
-                                Cancelar
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        )}
+                                </DropdownMenuGroup>
+                              </>
+                            )}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </div>
                     </div>
 
@@ -421,6 +546,43 @@ export function CommitmentsManager({
                         </Button>
                       </div>
                     )}
+
+                    <Collapsible>
+                      <CollapsibleTrigger asChild>
+                        <Button size="sm" type="button" variant="ghost">
+                          <ChevronDown data-icon="inline-start" />
+                          Ver {commitment.occurrences.length} {commitment.occurrences.length === 1 ? "ocurrencia" : "ocurrencias"}
+                        </Button>
+                      </CollapsibleTrigger>
+                      <CollapsibleContent>
+                        <div className="mt-2 flex flex-col gap-3 rounded-md bg-muted/50 p-3">
+                          <p className="text-sm font-medium">Ocurrencias</p>
+                          {commitment.occurrences.length > 0 ? (
+                            <ol className="flex flex-col gap-3">
+                              {commitment.occurrences.map((occurrence, occurrenceIndex) => (
+                                <li className="flex flex-col gap-3" key={occurrence.id}>
+                                  <div className="flex flex-wrap items-center justify-between gap-3">
+                                    <div className="flex flex-wrap items-center gap-2">
+                                      <span className="text-sm">{formatDate(occurrence.scheduledFor)}</span>
+                                      <Badge variant={getOccurrenceStatusVariant(occurrence.status)}>
+                                        {getOccurrenceStatusLabel(occurrence.status)}
+                                      </Badge>
+                                    </div>
+                                    <p className="text-sm font-medium tabular-nums">
+                                      {commitment.flowDirection === "outflow" ? "−" : "+"}
+                                      {formatCurrency(occurrence.amount, currencyCode)}
+                                    </p>
+                                  </div>
+                                  {occurrenceIndex < commitment.occurrences.length - 1 && <Separator />}
+                                </li>
+                              ))}
+                            </ol>
+                          ) : (
+                            <p className="text-sm text-muted-foreground">Aún no se han generado ocurrencias.</p>
+                          )}
+                        </div>
+                      </CollapsibleContent>
+                    </Collapsible>
 
                     {index < commitments.length - 1 && <Separator />}
                   </li>
@@ -448,6 +610,36 @@ export function CommitmentsManager({
           )}
         </CardContent>
       </Card>
+
+      <AlertDialog
+        onOpenChange={(open) => {
+          if (!open && !isPending) {
+            setCommitmentToDelete(null);
+          }
+        }}
+        open={commitmentToDelete !== null}
+      >
+        <AlertDialogContent size="sm">
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Eliminar compromiso?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Se eliminarán permanentemente {commitmentToDelete?.name ?? "este compromiso"} y sus
+              ocurrencias. Esta acción no se puede deshacer.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isPending}>Conservar</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={isPending}
+              onClick={deleteCancelledCommitment}
+              variant="destructive"
+            >
+              {isPending && <Spinner data-icon="inline-start" />}
+              Eliminar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <Dialog open={isCreateOpen} onOpenChange={handleCreateOpenChange}>
         <DialogContent>

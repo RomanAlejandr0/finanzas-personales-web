@@ -1,6 +1,6 @@
 # Dashboard — estado funcional
 
-> Última revisión: 15 de agosto de 2026. Este documento es un resumen; el código y las migraciones son la fuente de detalle.
+> Última revisión: 22 de agosto de 2026. Este documento es un resumen; el código y las migraciones son la fuente de detalle.
 
 ## Disponible
 
@@ -8,7 +8,7 @@
 - Selector de cuenta de activo; crear y editar cuentas de banco, efectivo o billetera.
 - Registro y actualización del saldo actual por cuenta.
 - Proyección diaria hasta el cierre del mes y su gráfica.
-- Lista de hasta cinco compromisos próximos por cuenta y confirmación de los que vencen hoy.
+- Lista de compromisos previstos hasta el cierre del mes por cuenta y confirmación de los que vencen hoy.
 - Alta y administración de compromisos por cuenta: suscripciones, servicios, pagos, gastos planeados e ingresos esperados, con recurrencia.
 - Vista de compromisos para consultar el próximo pago, pausar o cancelar; al confirmar uno, se registra como transacción real.
 
