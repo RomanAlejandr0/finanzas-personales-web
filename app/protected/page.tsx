@@ -1,9 +1,11 @@
 import { AccountBalanceCard } from "@/components/dashboard/account-balance-card";
 import {
   AccountContextSelector,
-  type AssetAccount,
+  type FinancialAccount,
 } from "@/components/dashboard/account-context-selector";
+import { CommitmentActions } from "@/components/dashboard/commitment-actions";
 import type { BalanceProjectionPoint } from "@/components/dashboard/balance-projection-chart";
+import type { CreditCardDebtProjectionPoint } from "@/components/dashboard/credit-card-debt-projection-chart";
 import {
   type UpcomingCommitment,
   UpcomingCommitmentsCard,
@@ -20,6 +22,7 @@ type ProjectedBalanceSeries = {
 type Commitment = {
   id: string;
   name: string;
+  kind: UpcomingCommitment["kind"];
   flow_direction: "inflow" | "outflow";
 };
 
@@ -28,6 +31,13 @@ type CommitmentOccurrence = {
   commitment_id: string;
   scheduled_for: string;
   amount: number | string;
+};
+
+type ProjectedDebtSeries = {
+  date: string;
+  account_id: string;
+  debt: number | string;
+  planned_change: number | string;
 };
 
 type PageProps = {
@@ -71,45 +81,82 @@ export default async function ProtectedPage({ searchParams }: PageProps) {
 
   const { data: accounts, error: accountsError } = await supabase
     .from("accounts")
-    .select("id, name, subtype")
+    .select("id, name, type, subtype, properties")
     .eq("universe_id", universe.id)
-    .eq("type", "asset")
     .order("created_at", { ascending: true });
 
-  if (accountsError || !accounts || accounts.length === 0) {
+  const financialAccounts = ((accounts as FinancialAccount[] | null) ?? []).filter(
+    (account) =>
+      account.type === "asset" ||
+      (account.type === "liability" && account.subtype === "credit_card"),
+  );
+
+  if (accountsError || financialAccounts.length === 0) {
     throw new Error("No se pudieron obtener las cuentas.");
   }
 
-  const assetAccounts = accounts as AssetAccount[];
   const selectedAccount =
-    assetAccounts.find((account) => account.id === requestedAccountId) ??
-    assetAccounts.find((account) => account.subtype === "cash") ??
-    assetAccounts[0];
+    financialAccounts.find((account) => account.id === requestedAccountId) ??
+    financialAccounts.find((account) => account.type === "asset" && account.subtype === "cash") ??
+    financialAccounts.find((account) => account.type === "asset") ??
+    financialAccounts[0];
+  const isCreditCard =
+    selectedAccount.type === "liability" && selectedAccount.subtype === "credit_card";
 
-  const { data: balanceSeries, error: balanceSeriesError } = await supabase.rpc(
-    "get_projected_balance_series",
-    { p_through_date: projectionThroughDate },
-  );
+  let cashBalanceSeries: BalanceProjectionPoint[] = [];
+  let debtProjectionData: CreditCardDebtProjectionPoint[] = [];
+  let currentBalance: number | null = null;
 
-  if (balanceSeriesError) {
-    throw new Error("No se pudo obtener la proyección de saldo.");
+  if (isCreditCard) {
+    const { data: debtSeries, error: debtSeriesError } = await supabase.rpc(
+      "get_credit_card_debt_series",
+      {
+        p_account_id: selectedAccount.id,
+        p_through_date: projectionThroughDate,
+      },
+    );
+
+    if (debtSeriesError) {
+      throw new Error("No se pudo obtener la proyección de deuda de la tarjeta.");
+    }
+
+    debtProjectionData = (debtSeries as ProjectedDebtSeries[] | null)?.map(
+      (point) => ({
+        date: point.date,
+        debt: Number(point.debt),
+        plannedChange: Number(point.planned_change),
+      }),
+    ) ?? [];
+    const firstProjectionPoint = debtProjectionData[0];
+    currentBalance = firstProjectionPoint
+      ? firstProjectionPoint.debt - firstProjectionPoint.plannedChange
+      : null;
+  } else {
+    const { data: balanceSeries, error: balanceSeriesError } = await supabase.rpc(
+      "get_projected_balance_series",
+      { p_through_date: projectionThroughDate },
+    );
+
+    if (balanceSeriesError) {
+      throw new Error("No se pudo obtener la proyección de saldo.");
+    }
+
+    cashBalanceSeries = (balanceSeries as ProjectedBalanceSeries[] | null)
+      ?.filter((balance) => balance.account_id === selectedAccount.id)
+      .map<BalanceProjectionPoint>((balance) => ({
+        date: balance.date,
+        balance: Number(balance.balance),
+        plannedChange: Number(balance.planned_change),
+      })) ?? [];
+    const firstProjectionPoint = cashBalanceSeries[0];
+    currentBalance = firstProjectionPoint
+      ? firstProjectionPoint.balance - firstProjectionPoint.plannedChange
+      : null;
   }
-
-  const cashBalanceSeries = (balanceSeries as ProjectedBalanceSeries[] | null)
-    ?.filter((balance) => balance.account_id === selectedAccount.id)
-    .map<BalanceProjectionPoint>((balance) => ({
-      date: balance.date,
-      balance: Number(balance.balance),
-      plannedChange: Number(balance.planned_change),
-    })) ?? [];
-  const firstProjectionPoint = cashBalanceSeries[0];
-  const currentBalance = firstProjectionPoint
-    ? firstProjectionPoint.balance - firstProjectionPoint.plannedChange
-    : null;
 
   const { data: commitments, error: commitmentsError } = await supabase
     .from("commitments")
-    .select("id, name, flow_direction")
+    .select("id, name, kind, flow_direction")
     .eq("universe_id", universe.id)
     .eq("account_id", selectedAccount.id)
     .eq("status", "active");
@@ -139,22 +186,32 @@ export default async function ProtectedPage({ searchParams }: PageProps) {
 
   return (
     <section aria-label="Espacio de trabajo" className="flex flex-1 flex-col gap-6 pt-8">
-      <AccountContextSelector
-        accounts={assetAccounts}
-        selectedAccountId={selectedAccount.id}
-      />
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <AccountContextSelector
+          accounts={financialAccounts}
+          selectedAccountId={selectedAccount.id}
+        />
+        <CommitmentActions
+          account={selectedAccount}
+          moneyAccounts={financialAccounts.filter((account) => account.type === "asset")}
+        />
+      </div>
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
         <AccountBalanceCard
           accountId={selectedAccount.id}
           accountName={selectedAccount.name}
+          accountSubtype={selectedAccount.subtype}
+          accountType={selectedAccount.type}
+          creditLimit={Number(selectedAccount.properties.credit_limit) || 0}
           currencyCode={universe.currency_code}
           currentBalance={currentBalance}
+          debtProjectionData={debtProjectionData}
           projectionData={cashBalanceSeries}
         />
         <UpcomingCommitmentsCard
-          accountId={selectedAccount.id}
           commitments={upcomingCommitments}
           currencyCode={universe.currency_code}
+          isCreditCard={isCreditCard}
         />
       </div>
     </section>
@@ -194,6 +251,7 @@ async function getUpcomingCommitments(
         id: occurrence.id,
         name: commitment.name,
         amount: Number(occurrence.amount),
+        kind: commitment.kind,
         scheduledFor: occurrence.scheduled_for,
         flowDirection: commitment.flow_direction,
       };

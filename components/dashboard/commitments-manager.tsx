@@ -31,7 +31,6 @@ import {
   Card,
   CardAction,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
@@ -44,7 +43,6 @@ import {
   Dialog,
   DialogClose,
   DialogContent,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -60,7 +58,6 @@ import {
 import {
   Empty,
   EmptyContent,
-  EmptyDescription,
   EmptyHeader,
   EmptyMedia,
   EmptyTitle,
@@ -82,6 +79,7 @@ import {
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Spinner } from "@/components/ui/spinner";
+import type { FinancialAccount } from "@/components/dashboard/account-context-selector";
 import { createClient } from "@/lib/supabase/client";
 
 type CommitmentKind =
@@ -118,9 +116,10 @@ export type ManagedCommitment = {
 };
 
 type CommitmentsManagerProps = {
-  accountId: string;
+  account: FinancialAccount;
   commitments: ManagedCommitment[];
   currencyCode: string;
+  moneyAccounts: FinancialAccount[];
 };
 
 type CommitmentAction = "pause" | "resume" | "cancel";
@@ -250,10 +249,19 @@ function getOccurrenceSummary(commitment: ManagedCommitment) {
   return `Sin próximas · ${getOccurrenceStatusLabel(latestOccurrence.status)} el ${formatDate(latestOccurrence.scheduledFor)}`;
 }
 
+function getAmountPrefix(commitment: ManagedCommitment, isCreditCard: boolean) {
+  if (isCreditCard) {
+    return commitment.kind === "debt_payment" ? "−" : "+";
+  }
+
+  return commitment.flowDirection === "outflow" ? "−" : "+";
+}
+
 export function CommitmentsManager({
-  accountId,
+  account,
   commitments,
   currencyCode,
+  moneyAccounts,
 }: CommitmentsManagerProps) {
   const router = useRouter();
   const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -263,6 +271,7 @@ export function CommitmentsManager({
   const [kind, setKind] = useState<CommitmentKind>("subscription");
   const [recurrence, setRecurrence] =
     useState<CommitmentRecurrence>("monthly");
+  const [settlementAccountId, setSettlementAccountId] = useState("");
   const [createErrorMessage, setCreateErrorMessage] = useState<string | null>(null);
   const [actionErrorMessage, setActionErrorMessage] = useState<string | null>(null);
   const [commitmentToDelete, setCommitmentToDelete] = useState<{
@@ -270,6 +279,9 @@ export function CommitmentsManager({
     name: string;
   } | null>(null);
   const [isPending, startTransition] = useTransition();
+  const isCreditCard =
+    account.type === "liability" && account.subtype === "credit_card";
+  const requiresSettlementAccount = isCreditCard && kind === "debt_payment";
 
   const handleCreateOpenChange = (open: boolean) => {
     if (isPending) {
@@ -300,17 +312,25 @@ export function CommitmentsManager({
       return;
     }
 
+    if (requiresSettlementAccount && !settlementAccountId) {
+      setCreateErrorMessage("Selecciona la cuenta desde la que se pagará la tarjeta.");
+      return;
+    }
+
     setCreateErrorMessage(null);
 
     startTransition(async () => {
       const supabase = createClient();
       const { error } = await supabase.rpc("create_commitment", {
-        p_account_id: accountId,
+        p_account_id: account.id,
         p_anchor_date: anchorDate,
         p_amount: parsedAmount,
         p_kind: kind,
         p_name: name.trim(),
         p_recurrence: recurrence,
+        ...(requiresSettlementAccount
+          ? { p_settlement_account_id: settlementAccountId }
+          : {}),
       });
 
       if (error) {
@@ -325,6 +345,7 @@ export function CommitmentsManager({
       setAnchorDate(getTodayInputValue());
       setKind("subscription");
       setRecurrence("monthly");
+      setSettlementAccountId("");
       setIsCreateOpen(false);
       router.refresh();
     });
@@ -416,9 +437,6 @@ export function CommitmentsManager({
       <Card>
         <CardHeader>
           <CardTitle>Compromisos</CardTitle>
-          <CardDescription>
-            Administra lo que está previsto para esta cuenta y confirma lo que ya ocurrió.
-          </CardDescription>
           <CardAction>
             <Button onClick={() => setIsCreateOpen(true)} type="button">
               <Plus data-icon="inline-start" />
@@ -440,6 +458,7 @@ export function CommitmentsManager({
               {commitments.map((commitment, index) => {
                 const amountToDisplay =
                   commitment.nextOccurrence?.amount ?? commitment.defaultAmount;
+                const amountPrefix = getAmountPrefix(commitment, isCreditCard);
 
                 return (
                   <li className="flex flex-col gap-4 py-4 first:pt-0 last:pb-0" key={commitment.id}>
@@ -459,7 +478,7 @@ export function CommitmentsManager({
                       </div>
                       <div className="flex shrink-0 items-center gap-2">
                         <p className="font-medium tabular-nums">
-                          {commitment.flowDirection === "outflow" ? "−" : "+"}
+                          {amountPrefix}
                           {formatCurrency(amountToDisplay, currencyCode)}
                         </p>
                         <DropdownMenu>
@@ -530,7 +549,7 @@ export function CommitmentsManager({
                       </div>
                     </div>
 
-                    {hasDueOccurrence(commitment) && commitment.nextOccurrence && (
+                    {!isCreditCard && hasDueOccurrence(commitment) && commitment.nextOccurrence && (
                       <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-muted/50 p-3">
                         <p className="text-sm text-muted-foreground">
                           Al confirmarlo, se registrará como una transacción real.
@@ -569,7 +588,7 @@ export function CommitmentsManager({
                                       </Badge>
                                     </div>
                                     <p className="text-sm font-medium tabular-nums">
-                                      {commitment.flowDirection === "outflow" ? "−" : "+"}
+                                      {amountPrefix}
                                       {formatCurrency(occurrence.amount, currencyCode)}
                                     </p>
                                   </div>
@@ -596,9 +615,6 @@ export function CommitmentsManager({
                   <CalendarDays />
                 </EmptyMedia>
                 <EmptyTitle>Aún no hay compromisos</EmptyTitle>
-                <EmptyDescription>
-                  Agrega un pago, una suscripción o un ingreso esperado para incluirlo en la proyección.
-                </EmptyDescription>
               </EmptyHeader>
               <EmptyContent>
                 <Button onClick={() => setIsCreateOpen(true)} type="button">
@@ -645,9 +661,6 @@ export function CommitmentsManager({
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Agregar compromiso</DialogTitle>
-            <DialogDescription>
-              Se incluirá en la proyección de saldo a partir de la fecha indicada.
-            </DialogDescription>
           </DialogHeader>
 
           <form className="flex flex-col gap-6" onSubmit={handleCreateSubmit}>
@@ -702,11 +715,39 @@ export function CommitmentsManager({
                       <SelectItem value="bill">Servicio o recibo</SelectItem>
                       <SelectItem value="debt_payment">Pago de deuda</SelectItem>
                       <SelectItem value="planned_expense">Gasto planeado</SelectItem>
-                      <SelectItem value="expected_income">Ingreso esperado</SelectItem>
+                      {!isCreditCard && (
+                        <SelectItem value="expected_income">Ingreso esperado</SelectItem>
+                      )}
                     </SelectGroup>
                   </SelectContent>
                 </Select>
               </Field>
+              {requiresSettlementAccount && (
+                <Field
+                  data-invalid={Boolean(createErrorMessage) && !settlementAccountId}
+                >
+                  <FieldLabel>Pagar desde</FieldLabel>
+                  <Select
+                    onValueChange={setSettlementAccountId}
+                    value={settlementAccountId}
+                  >
+                    <SelectTrigger
+                      aria-invalid={Boolean(createErrorMessage) && !settlementAccountId}
+                    >
+                      <SelectValue placeholder="Selecciona una cuenta" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectGroup>
+                        {moneyAccounts.map((moneyAccount) => (
+                          <SelectItem key={moneyAccount.id} value={moneyAccount.id}>
+                            {moneyAccount.name}
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
+                </Field>
+              )}
               <Field>
                 <FieldLabel>Repetición</FieldLabel>
                 <Select

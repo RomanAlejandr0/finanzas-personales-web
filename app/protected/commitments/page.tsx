@@ -1,4 +1,7 @@
-import { AccountContextSelector, type AssetAccount } from "@/components/dashboard/account-context-selector";
+import {
+  AccountContextSelector,
+  type FinancialAccount,
+} from "@/components/dashboard/account-context-selector";
 import {
   CommitmentsManager,
   type ManagedCommitment,
@@ -49,20 +52,27 @@ export default async function CommitmentsPage({ searchParams }: PageProps) {
 
   const { data: accounts, error: accountsError } = await supabase
     .from("accounts")
-    .select("id, name, subtype")
+    .select("id, name, type, subtype, properties")
     .eq("universe_id", universe.id)
-    .eq("type", "asset")
     .order("created_at", { ascending: true });
 
-  if (accountsError || !accounts || accounts.length === 0) {
+  const financialAccounts = ((accounts as FinancialAccount[] | null) ?? []).filter(
+    (account) =>
+      account.type === "asset" ||
+      (account.type === "liability" && account.subtype === "credit_card"),
+  );
+
+  if (accountsError || financialAccounts.length === 0) {
     throw new Error("No se pudieron obtener las cuentas.");
   }
 
-  const assetAccounts = accounts as AssetAccount[];
   const selectedAccount =
-    assetAccounts.find((account) => account.id === requestedAccountId) ??
-    assetAccounts.find((account) => account.subtype === "cash") ??
-    assetAccounts[0];
+    financialAccounts.find((account) => account.id === requestedAccountId) ??
+    financialAccounts.find(
+      (account) => account.type === "asset" && account.subtype === "cash",
+    ) ??
+    financialAccounts.find((account) => account.type === "asset") ??
+    financialAccounts[0];
 
   const { data: commitments, error: commitmentsError } = await supabase
     .from("commitments")
@@ -154,14 +164,15 @@ export default async function CommitmentsPage({ searchParams }: PageProps) {
       </div>
 
       <AccountContextSelector
-        accounts={assetAccounts}
+        accounts={financialAccounts}
         destinationPath="/protected/commitments"
         selectedAccountId={selectedAccount.id}
       />
       <CommitmentsManager
-        accountId={selectedAccount.id}
+        account={selectedAccount}
         commitments={managedCommitments}
         currencyCode={universe.currency_code}
+        moneyAccounts={financialAccounts.filter((account) => account.type === "asset")}
       />
     </section>
   );
