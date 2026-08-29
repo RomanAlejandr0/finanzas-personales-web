@@ -98,3 +98,39 @@
     @apply bg-background text-foreground;
   }
 }
+
+@keyframes universe-star-drift {
+  from {
+    transform: translate3d(0, 0, 0);
+  }
+  to {
+    transform: translate3d(var(--drift-x), var(--drift-y), 0);
+  }
+}
+
+@keyframes universe-star-twinkle {
+  0%,
+  100% {
+    opacity: var(--star-opacity);
+  }
+  50% {
+    opacity: calc(var(--star-opacity) + 0.35);
+  }
+}
+
+.universe-star {
+  position: absolute;
+  border-radius: 9999px;
+  background: hsl(var(--foreground));
+  animation:
+    universe-star-drift var(--duration) ease-in-out var(--delay) infinite alternate,
+    universe-star-twinkle var(--twinkle-duration) ease-in-out var(--delay) infinite;
+  box-shadow: 0 0 5px hsl(var(--foreground) / 0.4);
+  will-change: opacity, transform;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .universe-star {
+    animation: none;
+  }
+}

@@ -1,6 +1,5 @@
-import { LogoutButton } from "@/components/dashboard/logout-button";
+import { SidebarProfileMenu } from "@/components/dashboard/sidebar-profile-menu";
 import { Button } from "@/components/ui/button";
-import { Separator } from "@/components/ui/separator";
 import { createClient } from "@/lib/supabase/server";
 import { CircleUserRound } from "lucide-react";
 import Link from "next/link";
@@ -32,8 +31,11 @@ export default async function ProtectedLayout({
   return (
     <div className="min-h-svh bg-background">
       <div className="grid min-h-svh md:grid-cols-[16rem_1fr]">
-        <aside className="hidden border-r md:flex md:flex-col">
-          <div className="flex flex-1 flex-col gap-6 p-4">
+        <aside className="hidden h-svh self-start border-r md:sticky md:top-0 md:flex md:flex-col">
+          <div className="flex flex-1 flex-col gap-8 p-4">
+            <p className="px-2 pt-1 text-sm font-semibold tracking-tight">
+              Finanzas Bin
+            </p>
             <div className="flex flex-col gap-2">
               <p className="px-2 text-xs font-medium text-muted-foreground">
                 Universos
@@ -47,19 +49,15 @@ export default async function ProtectedLayout({
             </div>
           </div>
 
-          <div className="flex flex-col gap-3 p-4">
-            <Separator />
-            <p className="truncate px-2 text-sm text-muted-foreground" title={email}>
-              {email}
-            </p>
-            <LogoutButton className="w-full justify-start" variant="ghost" />
+          <div className="p-4">
+            <SidebarProfileMenu email={email} />
           </div>
         </aside>
 
         <main className="min-w-0">
           <div className="mx-auto flex min-h-svh w-full max-w-6xl flex-col px-6 py-8 md:px-10">
             <header>
-              <h1 className="text-2xl font-semibold tracking-tight">Personal</h1>
+              <h1 className="text-2xl font-semibold tracking-tight">Universo personal</h1>
             </header>
             <div className="flex-1">{children}</div>
           </div>
